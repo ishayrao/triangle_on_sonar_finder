@@ -66,26 +66,30 @@ func loadTemplates(scale float64) ([]TemplateFromImage, error) {
 	return templates, nil
 }
 
-// ImageToMatrix converts a grayscale image to a 2D float32 matrix
-func ImageToMatrix(img image.Image, scale float64) [][]byte {
+// ImageToMatrix converts a grayscale image to a 2D float32 matrix -- preprocessing image using sobel edge detection and resizing
+func ImageToMatrix(img image.Image, scale float64) [][]float64 {
 	originalWidth := img.Bounds().Dx()
+	// step 1: resize image
 	img = resizeImage(img, uint(float64(originalWidth)*scale)) //resizing image
 	bounds := img.Bounds()
 	newWidth := bounds.Dx()
 	newHeight := bounds.Dy()
 
-	matrix := make([][]byte, newHeight)
-	for i := range matrix {
-		matrix[i] = make([]byte, newWidth)
-	}
-
+	// step 2: convert to grayscale matrix (same logic for template)
+	grayMatrix := make([][]float64, newHeight)
 	for y := 0; y < newHeight; y++ {
+		grayMatrix[y] = make([]float64, newWidth)
 		for x := 0; x < newWidth; x++ {
-			matrix[y][x] = img.At(x+bounds.Min.X, y+bounds.Min.Y).(color.YCbCr).Y
+			c := img.At(x+bounds.Min.X, y+bounds.Min.Y)
+			grayValue := float64(color.GrayModel.Convert(c).(color.Gray).Y)
+			grayMatrix[y][x] = grayValue
 		}
 	}
 
-	return matrix
+	// step 3: apply Sobel edge detection
+	edgeMatrix := sobelEdge(grayMatrix, newWidth, newHeight, 50) // adjust threshold as needed
+	// step 4: return the edge matrix [][]float64
+	return edgeMatrix
 }
 
 // calculateIoU calculates the Intersection over Union between two rectangles
@@ -110,7 +114,7 @@ func calculateIoU(box1, box2 *image.Rectangle) float64 {
 	return float64(intersectionArea) / float64(unionArea)
 }
 
-func findTriangles(templates []TemplateFromImage, imgMatrix [][]byte, stride int, threshold float32, scale float64) []objdet.Detection {
+func findTriangles(templates []TemplateFromImage, imgMatrix [][]float64, stride int, threshold float32, scale float64) []objdet.Detection {
 	// Find matches using all templates
 	var allMatches []Match
 	for _, template := range templates {
